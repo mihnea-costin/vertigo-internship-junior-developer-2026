@@ -59,6 +59,8 @@ export async function handleRegister({
     id: newUser[0].id,
     username: newUser[0].username,
     email: newUser[0].email,
+    role: newUser[0].role,
+    balance: newUser[0].balance,
     token,
   };
 }
@@ -94,6 +96,8 @@ export async function handleLogin({
     id: user.id,
     username: user.username,
     email: user.email,
+    role: user.role,
+    balance: user.balance,
     token,
   };
 }
@@ -155,12 +159,15 @@ export async function handleCreateMarket({
   };
 }
 
-export async function handleListMarkets({ query }: { query: { status?: string } }) {
+export async function handleListMarkets({ query }: { query: { status?: string; page?: string; limit?: string } }) {
   const requestedStatus = query.status;
   const statusFilter: typeof marketsTable.$inferSelect.status =
     requestedStatus === "active" || requestedStatus === "resolved" || requestedStatus === "archived"
       ? requestedStatus
       : "active";
+
+  const page = Math.max(1, Number(query?.page ?? 1));
+  const limit = Math.max(1, Math.min(100, Number(query?.limit ?? 10)));
 
   const marketRows = await db
     .select({
@@ -174,7 +181,15 @@ export async function handleListMarkets({ query }: { query: { status?: string } 
     .where(eq(marketsTable.status, statusFilter));
 
   if (marketRows.length === 0) {
-    return [];
+    return {
+      data: [],
+      pagination: {
+        page,
+        pageSize: limit,
+        total: 0,
+        hasMore: false,
+      },
+    };
   }
 
   const marketIds = marketRows.map((market) => market.id);
@@ -211,7 +226,7 @@ export async function handleListMarkets({ query }: { query: { status?: string } 
     outcomesByMarket.set(outcome.marketId, existing);
   }
 
-  return marketRows.map((market) => {
+  const enrichedMarkets = marketRows.map((market) => {
     const outcomes = outcomesByMarket.get(market.id) ?? [];
     const totalMarketBets = outcomes.reduce(
       (sum, outcome) => sum + (outcomeTotals.get(outcome.id) ?? 0),
@@ -237,6 +252,19 @@ export async function handleListMarkets({ query }: { query: { status?: string } 
       totalMarketBets,
     };
   });
+
+  const start = (page - 1) * limit;
+  const paginatedMarkets = enrichedMarkets.slice(start, start + limit);
+
+  return {
+    data: paginatedMarkets,
+    pagination: {
+      page,
+      pageSize: limit,
+      total: enrichedMarkets.length,
+      hasMore: page * limit < enrichedMarkets.length,
+    },
+  };
 }
 
 export async function handleGetMarket({
@@ -559,12 +587,14 @@ export const handleGetUserProfile = async ({ user, query, set }: any) => {
   const betRows = await db
     .select({
       id: betsTable.id,
+      outcomeId: betsTable.outcomeId,
       amount: betsTable.amount,
       createdAt: betsTable.createdAt,
       market: {
         id: marketsTable.id,
         title: marketsTable.title,
         status: marketsTable.status,
+        resolvedOutcomeId: marketsTable.resolvedOutcomeId,
       },
       outcome: {
         id: marketOutcomesTable.id,

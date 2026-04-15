@@ -5,9 +5,9 @@ export interface Market {
   id: number;
   title: string;
   description?: string;
-  status: "active" | "resolved";
+  status: "active" | "resolved" | "archived";
   creator?: string;
-  outcomes: MarketOutcome[];
+  outcomes: Array<MarketOutcome>;
   totalMarketBets: number;
 }
 
@@ -22,6 +22,8 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  role: "user" | "admin";
+  balance: number;
   token: string;
 }
 
@@ -32,6 +34,58 @@ export interface Bet {
   outcomeId: number;
   amount: number;
   createdAt: string;
+}
+
+export interface UserProfileBet {
+  id: number;
+  outcomeId: number;
+  amount: number;
+  createdAt: string;
+  market: {
+    id: number;
+    title: string;
+    status: "active" | "resolved" | "archived";
+    resolvedOutcomeId: number | null;
+  };
+  outcome: {
+    id: number;
+    title: string;
+  };
+}
+
+export interface UserProfile {
+  balance: number;
+  apiKey: string | null;
+  activeBets: Array<UserProfileBet>;
+  resolvedBets: Array<UserProfileBet>;
+  pagination: {
+    active: {
+      page: number;
+      pageSize: number;
+      total: number;
+    };
+    resolved: {
+      page: number;
+      pageSize: number;
+      total: number;
+    };
+  };
+}
+
+export interface LeaderboardEntry {
+  userId: number;
+  username: string;
+  balance: number;
+}
+
+export interface MarketsListResponse {
+  data: Array<Market>;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+  };
 }
 
 // API Client
@@ -50,11 +104,13 @@ class ApiClient {
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
     const url = `${this.baseUrl}${endpoint}`;
-    const headers = {
-      "Content-Type": "application/json",
-      ...this.getAuthHeader(),
-      ...options.headers,
-    };
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", "application/json");
+
+    const authHeader = this.getAuthHeader();
+    if (authHeader.Authorization) {
+      headers.set("Authorization", authHeader.Authorization);
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -91,18 +147,69 @@ class ApiClient {
   }
 
   // Markets endpoints
-  async listMarkets(status: "active" | "resolved" = "active"): Promise<Market[]> {
-    return this.request(`/api/markets?status=${status}`);
+  async listMarkets(params?: {
+    status?: "active" | "resolved" | "archived";
+    page?: number;
+    sortBy?: string;
+  }): Promise<MarketsListResponse> {
+    const searchParams = new URLSearchParams();
+
+    if (params?.status) {
+      searchParams.set("status", params.status);
+    }
+
+    if (typeof params?.page === "number") {
+      searchParams.set("page", String(params.page));
+    }
+
+    if (params?.sortBy) {
+      searchParams.set("sortBy", params.sortBy);
+    }
+
+    const query = searchParams.toString();
+    return this.request(`/api/markets${query ? `?${query}` : ""}`);
   }
 
   async getMarket(id: number): Promise<Market> {
     return this.request(`/api/markets/${id}`);
   }
 
-  async createMarket(title: string, description: string, outcomes: string[]): Promise<Market> {
+  async createMarket(title: string, description: string, outcomes: Array<string>): Promise<Market> {
     return this.request("/api/markets", {
       method: "POST",
       body: JSON.stringify({ title, description, outcomes }),
+    });
+  }
+
+  async resolveMarket(marketId: number, outcomeId: number): Promise<{ message: string }> {
+    return this.request(`/api/markets/${marketId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ outcomeId }),
+    });
+  }
+
+  async archiveMarket(marketId: number): Promise<{ message: string }> {
+    return this.request(`/api/markets/${marketId}/archive`, {
+      method: "POST",
+    });
+  }
+
+  async getUserProfile(activePage = 1, resolvedPage = 1): Promise<UserProfile> {
+    const query = new URLSearchParams({
+      activePage: String(activePage),
+      resolvedPage: String(resolvedPage),
+    });
+
+    return this.request(`/api/markets/profile?${query.toString()}`);
+  }
+
+  async getLeaderboard(): Promise<Array<LeaderboardEntry>> {
+    return this.request("/api/markets/leaderboard");
+  }
+
+  async generateApiKey(): Promise<{ apiKey: string }> {
+    return this.request("/api/markets/generate-api-key", {
+      method: "POST",
     });
   }
 

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
-import { api, Market } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,34 +12,62 @@ import { Label } from "@/components/ui/label";
 function MarketDetailPage() {
   const { id } = useParams({ from: "/markets/$id" });
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const [market, setMarket] = useState<Market | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { isAuthenticated, user } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<number | null>(null);
   const [betAmount, setBetAmount] = useState("");
   const [isBetting, setIsBetting] = useState(false);
+  const [isResolving, setIsResolving] = useState<number | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const marketId = parseInt(id, 10);
+  const isAdmin = user?.role === "admin";
 
-  useEffect(() => {
-    const loadMarket = async () => {
-      try {
-        setIsLoading(true);
-        const data = await api.getMarket(marketId);
-        setMarket(data);
-        if (data.outcomes.length > 0) {
-          setSelectedOutcomeId(data.outcomes[0].id);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load market details");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const {
+    data: market,
+    isPending: isMarketPending,
+    refetch: refetchMarket,
+  } = useQuery({
+    queryKey: ["market", marketId],
+    queryFn: () => api.getMarket(marketId),
+    enabled: isAuthenticated && Number.isInteger(marketId),
+    refetchInterval: 5000,
+  });
 
-    loadMarket();
-  }, [marketId]);
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "market-detail-balance"],
+    queryFn: () => api.getUserProfile(1, 1),
+    enabled: isAuthenticated,
+    refetchInterval: 5000,
+  });
+
+  const userBalance = profile?.balance ?? 0;
+
+  const handleResolveMarket = async (outcomeId: number) => {
+    try {
+      setIsResolving(outcomeId);
+      setError(null);
+      await api.resolveMarket(marketId, outcomeId);
+      await refetchMarket();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve market");
+    } finally {
+      setIsResolving(null);
+    }
+  };
+
+  const handleArchiveMarket = async () => {
+    try {
+      setIsArchiving(true);
+      setError(null);
+      await api.archiveMarket(marketId);
+      await refetchMarket();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive market");
+    } finally {
+      setIsArchiving(false);
+    }
+  };
 
   const handlePlaceBet = async () => {
     if (!selectedOutcomeId || !betAmount) {
@@ -46,14 +75,23 @@ function MarketDetailPage() {
       return;
     }
 
+    const parsedAmount = Number(betAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError("Bet amount must be a positive number.");
+      return;
+    }
+
+    if (parsedAmount > userBalance) {
+      setError("Insufficient balance for this bet amount.");
+      return;
+    }
+
     try {
       setIsBetting(true);
       setError(null);
-      await api.placeBet(marketId, selectedOutcomeId, parseFloat(betAmount));
+      await api.placeBet(marketId, selectedOutcomeId, parsedAmount);
       setBetAmount("");
-      // Reload market to show updated odds
-      const updated = await api.getMarket(marketId);
-      setMarket(updated);
+      await refetchMarket();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place bet");
     } finally {
@@ -74,7 +112,7 @@ function MarketDetailPage() {
     );
   }
 
-  if (isLoading) {
+  if (isMarketPending) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Loading market...</p>
@@ -143,6 +181,14 @@ function MarketDetailPage() {
                       <p className="text-sm text-muted-foreground mt-1">
                         Total bets: ${outcome.totalBets.toFixed(2)}
                       </p>
+                      <div className="mt-3">
+                        <div className="h-2 w-full rounded-none bg-secondary/40">
+                          <div
+                            className="h-full rounded-none bg-primary transition-all"
+                            style={{ width: `${Math.max(0, Math.min(100, outcome.odds))}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="text-3xl font-bold text-primary">{outcome.odds}%</p>
@@ -166,6 +212,7 @@ function MarketDetailPage() {
               <Card className="bg-secondary/5">
                 <CardHeader>
                   <CardTitle>Place Your Bet</CardTitle>
+                  <CardDescription>Available balance: ${userBalance.toFixed(2)}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -197,6 +244,41 @@ function MarketDetailPage() {
                   >
                     {isBetting ? "Placing bet..." : "Place Bet"}
                   </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {market.status === "active" && isAdmin && (
+              <Card className="bg-secondary/5">
+                <CardHeader>
+                  <CardTitle>Resolve Market (Admin)</CardTitle>
+                  <CardDescription>Choose the winning outcome or archive the market.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-2">
+                    {market.outcomes.map((outcome) => (
+                      <div key={`resolve-${outcome.id}`} className="flex items-center justify-between border p-3">
+                        <span className="font-medium">{outcome.title}</span>
+                        <Button
+                          size="sm"
+                          onClick={() => handleResolveMarket(outcome.id)}
+                          disabled={isResolving !== null || isArchiving || isBetting}
+                        >
+                          {isResolving === outcome.id ? "Resolving..." : "Resolve"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      variant="destructive"
+                      onClick={handleArchiveMarket}
+                      disabled={isArchiving || isResolving !== null || isBetting}
+                    >
+                      {isArchiving ? "Archiving..." : "Archive (Refund All Bets)"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
