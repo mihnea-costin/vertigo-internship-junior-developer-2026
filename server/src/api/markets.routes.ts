@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware } from "../middleware/auth.middleware";
-import { handleCreateMarket, handleListMarkets, handleGetMarket, handlePlaceBet } from "./handlers";
+import { handleCreateMarket, handleListMarkets, handleGetMarket, handlePlaceBet, handleResolveMarket } from "./handlers";
 
 export const marketRoutes = new Elysia({ prefix: "/api/markets" })
   .use(authMiddleware)
@@ -33,12 +33,20 @@ export const marketRoutes = new Elysia({ prefix: "/api/markets" })
           }),
         })
         .post("/:id/bets", handlePlaceBet, {
-          params: t.Object({
-            id: t.Numeric(),
-          }),
-          body: t.Object({
-            outcomeId: t.Number(),
-            amount: t.Number(),
-          }),
-        }),
+       params: t.Object({
+         id: t.Numeric(),
+       }),
+       body: t.Object({
+         outcomeId: t.Number(),
+         amount: t.Number(),
+       }),
+     }) // -> atenție, aici am șters punctul și virgula dacă existau, ca să pot înlănțui cu următorul post
+     .post("/:id/resolve", handleResolveMarket, {
+       params: t.Object({
+         id: t.Numeric(),
+       }),
+       body: t.Object({
+         outcomeId: t.Number(),
+       }),
+     })
   );

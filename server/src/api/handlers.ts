@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import db from "../db";
 import { usersTable, marketsTable, marketOutcomesTable, betsTable } from "../db/schema";
 import { hashPassword, verifyPassword, type AuthTokenPayload } from "../lib/auth";
@@ -6,7 +6,6 @@ import {
   validateRegistration,
   validateLogin,
   validateMarketCreation,
-  validateBet,
 } from "../lib/validation";
 
 type JwtSigner = {
@@ -198,11 +197,11 @@ export async function handleGetMarket({
   params,
   set,
 }: {
-  params: { id: number };
+  params: { id: string };
   set: { status: number };
 }) {
   const market = await db.query.marketsTable.findFirst({
-    where: eq(marketsTable.id, params.id),
+    where: (markets: typeof marketsTable, { eq }) => eq(markets.id, params.id),
     with: {
       creator: {
         columns: { username: true },
@@ -308,5 +307,81 @@ export const handlePlaceBet = async ({
     console.error(error);
     set.status = 500;
     return { error: "Failed to place bet" };
+  }
+};
+
+export const handleResolveMarket = async ({
+  params,
+  body,
+  user,
+  set,
+}: any) => {
+  // 1. Verificăm dacă user-ul este Admin
+  const [currentUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id));
+
+  if (!currentUser || currentUser.role !== "admin") {
+    set.status = 403;
+    return { error: "Only admins can resolve markets" };
+  }
+
+  const marketId = Number(params.id);
+  const winningOutcomeId = Number(body.outcomeId);
+
+  try {
+    await db.transaction(async (tx) => {
+      // 2. Marcăm marketul ca fiind rezolvat
+      await tx
+        .update(marketsTable)
+        .set({
+          status: "resolved",
+          resolvedOutcomeId: winningOutcomeId,
+        })
+        .where(eq(marketsTable.id, marketId));
+
+      // 3. Aducem toate pariurile pentru acest market
+      const allBets = await tx
+        .select()
+        .from(betsTable)
+        .where(eq(betsTable.marketId, marketId));
+
+      // 4. Calculăm totalul banilor pariați (pool-ul)
+      const totalPool = allBets.reduce((sum, bet) => sum + bet.amount, 0);
+
+      // 5. Găsim pariurile câștigătoare
+      const winningBets = allBets.filter(bet => bet.outcomeId === winningOutcomeId);
+      const winningPool = winningBets.reduce((sum, bet) => sum + bet.amount, 0);
+
+      // 6. Distribuim câștigurile (dacă a câștigat cineva)
+      if (winningPool > 0) {
+        for (const bet of winningBets) {
+          // Calculăm cota parte a utilizatorului din câștig
+          const userShare = bet.amount / winningPool;
+          const userWinnings = totalPool * userShare;
+
+          // Aducem balanța curentă a câștigătorului
+          const [winner] = await tx
+            .select()
+            .from(usersTable)
+            .where(eq(usersTable.id, bet.userId));
+
+          if (winner) {
+            // Îi dăm banii
+            await tx
+              .update(usersTable)
+              .set({ balance: winner.balance + userWinnings })
+              .where(eq(usersTable.id, winner.id));
+          }
+        }
+      }
+    });
+
+    return { message: "Market resolved and funds distributed successfully" };
+  } catch (error) {
+    console.error(error);
+    set.status = 500;
+    return { error: "Failed to resolve market" };
   }
 };
