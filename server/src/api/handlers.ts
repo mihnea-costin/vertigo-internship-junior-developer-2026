@@ -254,65 +254,59 @@ export async function handleGetMarket({
   };
 }
 
-export async function handlePlaceBet({
+export const handlePlaceBet = async ({
   params,
   body,
-  set,
   user,
-}: {
-  params: { id: number };
-  body: { outcomeId: number; amount: number };
-  set: { status: number };
-  user: typeof usersTable.$inferSelect;
-}) {
-  const marketId = params.id;
-  const { outcomeId, amount } = body;
-  const errors = validateBet(amount);
-
-  if (errors.length > 0) {
+  set,
+}: any) => {
+  // 1. Validare: Suma trebuie să fie mai mare decât 0
+  if (body.amount <= 0) {
     set.status = 400;
-    return { errors };
+    return { error: "Bet amount must be positive" };
   }
 
-  const market = await db.query.marketsTable.findFirst({
-    where: eq(marketsTable.id, marketId),
-  });
+  try {
+    // 2. Tranzacție: executăm ambele operațiuni împreună
+    const result = await db.transaction(async (tx) => {
+      // Aducem datele utilizatorului pentru a verifica balanța
+      const [currentUser] = await tx
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, user.id));
 
-  if (!market) {
-    set.status = 404;
-    return { error: "Market not found" };
+      if (!currentUser || currentUser.balance < body.amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      // Inserăm pariul
+      const [newBet] = await tx
+        .insert(betsTable)
+        .values({
+          userId: user.id,
+          marketId: params.id,
+          outcomeId: body.outcomeId,
+          amount: body.amount,
+        })
+        .returning();
+
+      // Scădem suma din balanța utilizatorului
+      await tx
+        .update(usersTable)
+        .set({ balance: currentUser.balance - body.amount })
+        .where(eq(usersTable.id, user.id));
+
+      return newBet;
+    });
+
+    return { message: "Bet placed successfully", bet: result };
+  } catch (error: any) {
+    if (error.message === "Insufficient balance") {
+      set.status = 400;
+      return { error: "Insufficient balance" };
+    }
+    console.error(error);
+    set.status = 500;
+    return { error: "Failed to place bet" };
   }
-
-  if (market.status !== "active") {
-    set.status = 400;
-    return { error: "Market is not active" };
-  }
-
-  const outcome = await db.query.marketOutcomesTable.findFirst({
-    where: and(eq(marketOutcomesTable.id, outcomeId), eq(marketOutcomesTable.marketId, marketId)),
-  });
-
-  if (!outcome) {
-    set.status = 404;
-    return { error: "Outcome not found" };
-  }
-
-  const bet = await db
-    .insert(betsTable)
-    .values({
-      userId: user.id,
-      marketId,
-      outcomeId,
-      amount: Number(amount),
-    })
-    .returning();
-
-  set.status = 201;
-  return {
-    id: bet[0].id,
-    userId: bet[0].userId,
-    marketId: bet[0].marketId,
-    outcomeId: bet[0].outcomeId,
-    amount: bet[0].amount,
-  };
-}
+};
