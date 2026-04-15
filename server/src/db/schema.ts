@@ -18,6 +18,10 @@ export const usersTable = sqliteTable(
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
+    balance: real("balance").notNull().default(1000), // Sistemul de balanță
+    role: text("role", { enum: ["user", "admin"] })
+      .notNull()
+      .default("user"), // Sistemul de roluri
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -38,7 +42,7 @@ export const marketsTable = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     title: text("title").notNull(),
     description: text("description"),
-    status: text("status", { enum: ["active", "resolved"] })
+    status: text("status", { enum: ["active", "resolved", "archived"] }) // Adăugat 'archived'
       .notNull()
       .default("active"),
     createdBy: integer("created_by")
