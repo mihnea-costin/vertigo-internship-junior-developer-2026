@@ -17,6 +17,7 @@ export const usersTable = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
+    apiKey: text("api_key").unique(),
     passwordHash: text("password_hash").notNull(),
     balance: real("balance").notNull().default(1000), // Sistemul de balanță
     role: text("role", { enum: ["user", "admin"] })

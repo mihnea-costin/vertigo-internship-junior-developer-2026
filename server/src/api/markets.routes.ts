@@ -1,6 +1,15 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware } from "../middleware/auth.middleware";
-import { handleCreateMarket, handleListMarkets, handleGetMarket, handlePlaceBet, handleResolveMarket } from "./handlers";
+import {
+  handleCreateMarket,
+  handleListMarkets,
+  handleGetMarket,
+  handlePlaceBet,
+  handleResolveMarket,
+  handleArchiveMarket,
+  handleGenerateApiKey,
+  handleGetUserProfile,
+} from "./handlers";
 
 export const marketRoutes = new Elysia({ prefix: "/api/markets" })
   .use(authMiddleware)
@@ -11,7 +20,7 @@ export const marketRoutes = new Elysia({ prefix: "/api/markets" })
   })
   .get("/:id", handleGetMarket, {
     params: t.Object({
-      id: t.Numeric(),
+      id: t.String(),
     }),
   })
   .guard(
@@ -25,6 +34,13 @@ export const marketRoutes = new Elysia({ prefix: "/api/markets" })
     },
     (app) =>
       app
+        .get("/profile", handleGetUserProfile, {
+          query: t.Object({
+            activePage: t.Optional(t.Numeric()),
+            resolvedPage: t.Optional(t.Numeric()),
+          }),
+        })
+        .post("/generate-api-key", handleGenerateApiKey)
         .post("/", handleCreateMarket, {
           body: t.Object({
             title: t.String(),
@@ -33,20 +49,25 @@ export const marketRoutes = new Elysia({ prefix: "/api/markets" })
           }),
         })
         .post("/:id/bets", handlePlaceBet, {
-       params: t.Object({
-         id: t.Numeric(),
-       }),
-       body: t.Object({
-         outcomeId: t.Number(),
-         amount: t.Number(),
-       }),
-     }) // -> atenție, aici am șters punctul și virgula dacă existau, ca să pot înlănțui cu următorul post
-     .post("/:id/resolve", handleResolveMarket, {
-       params: t.Object({
-         id: t.Numeric(),
-       }),
-       body: t.Object({
-         outcomeId: t.Number(),
-       }),
-     })
+          params: t.Object({
+            id: t.String(),
+          }),
+          body: t.Object({
+            outcomeId: t.Number(),
+            amount: t.Number(),
+          }),
+        })
+        .post("/:id/resolve", handleResolveMarket, {
+          params: t.Object({
+            id: t.String(),
+          }),
+          body: t.Object({
+            outcomeId: t.Number(),
+          }),
+        })
+        .post("/:id/archive", handleArchiveMarket, {
+          params: t.Object({
+            id: t.Numeric(),
+          }),
+        }),
   );
