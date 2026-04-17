@@ -20,4 +20,4 @@ To run the project locally without Docker:
 
 ## Images or Video Demo
 
-The demo video showcasing the full user flow, admin resolution mechanics, and the terminal API bot demonstration can be found in this repository within the `./submission` folder.
+The demo video showcasing the full user flow can be found in this repository within the `./submission` folder.
