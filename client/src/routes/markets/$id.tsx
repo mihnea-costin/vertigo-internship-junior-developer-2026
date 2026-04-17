@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 function MarketDetailPage() {
   const { id } = useParams({ from: "/markets/$id" });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<number | null>(null);
@@ -90,6 +91,7 @@ function MarketDetailPage() {
       setIsBetting(true);
       setError(null);
       await api.placeBet(marketId, selectedOutcomeId, parsedAmount);
+      await queryClient.invalidateQueries();
       setBetAmount("");
       await refetchMarket();
     } catch (err) {

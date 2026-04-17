@@ -1,9 +1,10 @@
 import { HeadContent, Link, Scripts, createRootRoute } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import appCss from "../styles.css?url";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
 
 const queryClient = new QueryClient();
 
@@ -83,6 +84,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 function AppShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "header-balance"],
+    queryFn: () => api.getUserProfile(1, 1),
+    enabled: !!user,
+    refetchInterval: 5000,
+  });
+
+  const displayedBalance = profile?.balance ?? user?.balance ?? 0;
+
   return (
     <>
       <header className="border-b bg-white/80 backdrop-blur-sm">
@@ -114,7 +124,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           {user ? (
             <div className="text-right text-sm">
               <p className="font-medium text-foreground">{user.username}</p>
-              <p className="text-muted-foreground">Balance: ${user.balance.toFixed(2)}</p>
+              <p className="text-muted-foreground">Balance: ${displayedBalance.toFixed(2)}</p>
             </div>
           ) : null}
         </div>
