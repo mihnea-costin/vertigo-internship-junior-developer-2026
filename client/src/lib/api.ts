@@ -204,7 +204,7 @@ class ApiClient {
   }
 
   async getLeaderboard(): Promise<Array<LeaderboardEntry>> {
-    return this.request("/api/markets/leaderboard");
+    return this.request("/api/leaderboard");
   }
 
   async generateApiKey(): Promise<{ apiKey: string }> {

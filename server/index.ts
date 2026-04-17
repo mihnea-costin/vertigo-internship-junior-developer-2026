@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { authRoutes } from "./src/api/auth.routes";
+import { leaderboardRoutes } from "./src/api/leaderboard.routes";
 import { marketRoutes } from "./src/api/markets.routes";
 import { jwtPlugin } from "./src/plugins/jwt";
 
@@ -26,6 +27,7 @@ export const app = new Elysia()
     }
   })
   .use(authRoutes)
+  .use(leaderboardRoutes)
   .use(marketRoutes);
 
 if (import.meta.main) {

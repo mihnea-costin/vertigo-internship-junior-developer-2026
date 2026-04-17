@@ -38,4 +38,4 @@ To run the project locally without Docker, follow these steps:
 ---
 
 ## 4. Visual Demo
-*The demo video and screenshots can be found in this folder (`./submission/assets`).*
+*The demo video and screenshots can be found in this folder (`./submission`).*

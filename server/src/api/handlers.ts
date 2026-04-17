@@ -159,6 +159,19 @@ export async function handleCreateMarket({
   };
 }
 
+export async function handleGetLeaderboard({ set }: { set: ResponseSet }) {
+  const leaderboard = await db
+    .select({
+      userId: usersTable.id,
+      username: usersTable.username,
+      balance: usersTable.balance,
+    })
+    .from(usersTable)
+    .orderBy(desc(usersTable.balance), asc(usersTable.username));
+
+  return leaderboard;
+}
+
 export async function handleListMarkets({ query }: { query: { status?: string; page?: string; limit?: string } }) {
   const requestedStatus = query.status;
   const statusFilter: typeof marketsTable.$inferSelect.status =
